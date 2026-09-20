@@ -80,10 +80,6 @@ html, body {
     box-sizing: border-box !important;
     padding: 8px 12px !important;
   }
-  
-  .track-info {
-    max-width: 40% !important;
-  }
   /* Reforço de centralização mobile */
 @media (max-width: 768px) {
   .player-controls {
@@ -96,6 +92,52 @@ html, body {
     padding: 0 10px !important;
     justify-content: center !important;
   }
+    /* Garante que o título e as ações não fiquem encavalados no telemóvel */
+.track-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.track-info {
+  flex: 1;
+  min-width: 0; /* Impede que o texto estique a linha */
+  overflow: hidden;
+}
+
+.track-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+.track-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* Dá espaço adequado entre os ícones */
+  flex-shrink: 0;
+}
+
+.track-actions button {
+  background: transparent;
+  border: none;
+  color: #a0a0a0;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.track-actions button:hover,
+.track-actions button.active {
+  color: #B8F36B; /* Destaca o coração quando ativado */
+}
 }
     </style>
 </head>
@@ -1206,6 +1248,18 @@ html, body {
         .then(reg => console.log('Service Worker registado com sucesso!', reg))
         .catch(err => console.error('Erro ao registar Service Worker:', err));
     });
+        }
+      // Função disparada ao selecionar/tocar numa música da lista
+function playTrack(trackId) {
+  // 1. Inicia a reprodução do áudio
+  setCurrentTrack(trackId);
+  audioElement.play();
+
+  // 2. Abre automaticamente o player em ecrã inteiro no telemóvel
+  const fullPlayerModal = document.getElementById('fullPlayerModal'); // ou o ID do seu modal do player
+  if (fullPlayerModal) {
+    fullPlayerModal.classList.add('active'); // ou fullPlayerModal.style.display = 'flex';
+  }
   }
     </script>
 </body>
