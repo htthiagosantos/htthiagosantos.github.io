@@ -92,21 +92,23 @@ html, body {
     padding: 0 10px !important;
     justify-content: center !important;
   }
-    /* Garante que o título e as ações não fiquem encavalados no telemóvel */
+ /* Ajuste de ícones na lista de músicas */
 .track-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px;
-  gap: 8px;
+  padding: 10px 14px;
+  gap: 10px;
   width: 100%;
   box-sizing: border-box;
+  background: #181a1f;
+  border-radius: 8px;
+  margin-bottom: 6px;
 }
 
 .track-info {
   flex: 1;
-  min-width: 0; /* Impede que o texto estique a linha */
-  overflow: hidden;
+  min-width: 0;
 }
 
 .track-title {
@@ -114,30 +116,54 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 14px;
+  color: #ffffff;
 }
 
+.track-artist {
+  font-size: 12px;
+  color: #8a8d93;
+}
+
+/* Espaçamento correto entre o coração e a pasta */
 .track-actions {
   display: flex;
   align-items: center;
-  gap: 12px; /* Dá espaço adequado entre os ícones */
+  gap: 16px; /* Impede que os ícones fiquem juntos */
   flex-shrink: 0;
 }
 
 .track-actions button {
-  background: transparent;
+  background: none;
   border: none;
-  color: #a0a0a0;
+  color: #8a8d93;
+  font-size: 18px;
   cursor: pointer;
   padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.track-actions button:hover,
-.track-actions button.active {
-  color: #B8F36B; /* Destaca o coração quando ativado */
+.track-actions button.active,
+.track-actions button:hover {
+  color: #B8F36B;
 }
+
+/* Modal do Player Expandido (Ecrã Inteiro) */
+.full-player-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #101114;
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.full-player-modal.active {
+  display: flex;
 }
     </style>
 </head>
@@ -1243,25 +1269,33 @@ window.addEventListener('DOMContentLoaded', () => {
   app = new VibePlayer();
 });
 
-// Registrar Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('Service Worker registrado com sucesso!', reg))
-      .catch(err => console.error('Erro ao registrar Service Worker:', err));
+// Inicialização e Registo do Service Worker
+  let app;
+  window.addEventListener('DOMContentLoaded', () => {
+    app = new VibePlayer();
   });
-}
-      // Função disparada ao selecionar/tocar numa música da lista
-function playTrack(trackId) {
-  // 1. Inicia a reprodução do áudio
-  setCurrentTrack(trackId);
-  audioElement.play();
 
-  // 2. Abre automaticamente o player em ecrã inteiro no telemóvel
-  const fullPlayerModal = document.getElementById('fullPlayerModal'); // ou o ID do seu modal do player
-  if (fullPlayerModal) {
-    fullPlayerModal.classList.add('active'); // ou fullPlayerModal.style.display = 'flex';
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('Service Worker registado:', reg))
+        .catch(err => console.error('Erro SW:', err));
+    });
   }
+
+  // Função para abrir/fechar o player em ecrã inteiro ao clicar na música
+  function openFullPlayer() {
+    const fullPlayer = document.querySelector('.full-player-modal') || document.getElementById('fullPlayerModal');
+    if (fullPlayer) {
+      fullPlayer.classList.add('active');
+    }
+  }
+
+  function closeFullPlayer() {
+    const fullPlayer = document.querySelector('.full-player-modal') || document.getElementById('fullPlayerModal');
+    if (fullPlayer) {
+      fullPlayer.classList.remove('active');
+    }
   }
     </script>
 </body>
