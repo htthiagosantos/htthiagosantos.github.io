@@ -1172,6 +1172,13 @@
         window.addEventListener('DOMContentLoaded', () => {
             app = new VibePlayer();
         });
+        if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('Service Worker registado com sucesso!', reg))
+        .catch(err => console.error('Erro ao registar Service Worker:', err));
+    });
+  }
     </script>
 </body>
 </html>
