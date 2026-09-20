@@ -1237,18 +1237,20 @@ html, body {
             }
         }
 
-        // Initialize App on Load
-        let app;
-        window.addEventListener('DOMContentLoaded', () => {
-            app = new VibePlayer();
-        });
-        if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('Service Worker registado com sucesso!', reg))
-        .catch(err => console.error('Erro ao registar Service Worker:', err));
-    });
-        }
+        // Inicializar App quando o DOM estiver pronto
+let app;
+window.addEventListener('DOMContentLoaded', () => {
+  app = new VibePlayer();
+});
+
+// Registrar Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('Service Worker registrado com sucesso!', reg))
+      .catch(err => console.error('Erro ao registrar Service Worker:', err));
+  });
+}
       // Função disparada ao selecionar/tocar numa música da lista
 function playTrack(trackId) {
   // 1. Inicia a reprodução do áudio
