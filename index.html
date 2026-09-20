@@ -568,64 +568,70 @@
                 });
             }
 
-            /* --- Audio Engine Listeners --- */
-            setupAudioListeners() {
-                this.audio.addEventListener('timeupdate', () => {
-                    if (!isNaN(this.audio.duration) && this.audio.duration > 0) {
-                        const progress = (this.audio.currentTime / this.audio.duration) * 100;
-                        this.seekBar.value = progress;
-                        document.getElementById('curr-time').innerText = this.formatTime(this.audio.currentTime);
-                        document.getElementById('total-time').innerText = this.formatTime(this.audio.duration);
-                    }
-                });
+            // Dentro do método setupAudioListeners() na classe VibePlayer:
 
-                /* --- Event Listener de Progresso de Áudio (Adicionar no constructor) --- */
-        // this.audio.addEventListener('timeupdate', () => this.updateSeekBarUI());
+setupAudioListeners() {
+    this.audio.addEventListener('timeupdate', () => {
+        if (!isNaN(this.audio.duration) && this.audio.duration > 0) {
+            const progress = (this.audio.currentTime / this.audio.duration) * 100;
+            this.seekBar.value = progress;
+            
+            // Atualiza o tempo atual e total na tela
+            const currTimeEl = document.getElementById('curr-time');
+            const totalTimeEl = document.getElementById('total-time');
+            if (currTimeEl) currTimeEl.innerText = this.formatTime(this.audio.currentTime);
+            if (totalTimeEl) totalTimeEl.innerText = this.formatTime(this.audio.duration);
+        }
+    });
 
-        this.audio.addEventListener('ended', () => {
-            if (this.repeatMode === 'one') {
-                this.audio.currentTime = 0;
-                this.audio.play();
-            } else {
-                this.playNextTrack(true);
-            }
-        });
+    this.audio.addEventListener('ended', () => {
+        if (this.repeatMode === 'one') {
+            this.audio.currentTime = 0;
+            this.audio.play();
+        } else {
+            this.playNextTrack(true);
+        }
+    });
 
-        this.audio.addEventListener('play', () => {
-            this.isPlaying = true;
-            this.updatePlayStateUI();
-        });
+    this.audio.addEventListener('play', () => {
+        this.isPlaying = true;
+        this.updatePlayStateUI();
+    });
 
-        this.audio.addEventListener('pause', () => {
-            this.isPlaying = false;
-            this.updatePlayStateUI();
-        });
+    this.audio.addEventListener('pause', () => {
+        this.isPlaying = false;
+        this.updatePlayStateUI();
+    });
 
-        this.audio.addEventListener('error', (e) => {
-            this.showToast('Erro ao reproduzir esta faixa.', 'error');
-        });
-    }
+    this.audio.addEventListener('error', (e) => {
+        this.showToast('Erro ao reproduzir esta faixa.', 'error');
+    });
+}
 
     playTrack(track) {
-        if (!track) return;
+    if (!track) return;
 
-        // Limpeza de URL anterior
-        if (this.currentObjectUrl) {
-            URL.revokeObjectURL(this.currentObjectUrl);
-        }
-
-        this.currentTrack = track;
-        this.currentTrackIndex = this.getFilteredTracks().findIndex(t => t.id === track.id);
-        this.currentObjectUrl = URL.createObjectURL(track.blob);
-
-        this.audio.src = this.currentObjectUrl;
-        this.audio.play().then(() => {
-            this.isPlaying = true;
-            this.updatePlayerBar();
-            this.updateMediaSession();
-        }).catch(err => console.error("Playback error:", err));
+    // Libera a memória da URL anterior antes de criar uma nova
+    if (this.currentObjectUrl) {
+        URL.revokeObjectURL(this.currentObjectUrl);
     }
 
+    this.currentTrack = track;
+    this.currentTrackIndex = this.getFilteredTracks().findIndex(t => t.id === track.id);
+    
+    // Cria a nova URL local a partir do Blob retornado do IndexedDB
+    this.currentObjectUrl = URL.createObjectURL(track.blob);
+
+    this.audio.src = this.currentObjectUrl;
+    this.audio.play().then(() => {
+        this.isPlaying = true;
+        this.updatePlayerBar();
+        this.updateMediaSession();
+    }).catch(err => {
+        console.error("Erro na reprodução:", err);
+        this.showToast("Falha ao iniciar a reprodução da faixa.", "error");
+    });
+}
     /* --- Media Session (controles na tela de bloqueio / notificação) ---
        Funciona 100% offline: usa apenas metadados locais, sem rede. */
     setupMediaSession() {
@@ -1197,11 +1203,11 @@
 
     /* --- Utilities & Toast --- */
     formatTime(seconds) {
-        if (isNaN(seconds) || seconds === Infinity) return "0:00";
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    }
+    if (isNaN(seconds) || seconds === Infinity || seconds === null) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
 
     showToast(message, type = 'info') {
         const container = document.getElementById('toast-container');
