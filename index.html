@@ -652,651 +652,628 @@ html, body {
                     }
                 });
 
-                this.audio.addEventListener('ended', () => {
-                    if (this.repeatMode === 'one') {
-                        this.audio.currentTime = 0;
-                        this.audio.play();
-                    } else {
-                        this.playNextTrack(true);
+                /* --- Event Listener de Progresso de Áudio (Adicionar no constructor) --- */
+        // this.audio.addEventListener('timeupdate', () => this.updateSeekBarUI());
+
+        this.audio.addEventListener('ended', () => {
+            if (this.repeatMode === 'one') {
+                this.audio.currentTime = 0;
+                this.audio.play();
+            } else {
+                this.playNextTrack(true);
+            }
+        });
+
+        this.audio.addEventListener('play', () => {
+            this.isPlaying = true;
+            this.updatePlayStateUI();
+        });
+
+        this.audio.addEventListener('pause', () => {
+            this.isPlaying = false;
+            this.updatePlayStateUI();
+        });
+
+        this.audio.addEventListener('error', (e) => {
+            this.showToast('Erro ao reproduzir esta faixa.', 'error');
+        });
+    }
+
+    playTrack(track) {
+        if (!track) return;
+
+        // Limpeza de URL anterior
+        if (this.currentObjectUrl) {
+            URL.revokeObjectURL(this.currentObjectUrl);
+        }
+
+        this.currentTrack = track;
+        this.currentTrackIndex = this.getFilteredTracks().findIndex(t => t.id === track.id);
+        this.currentObjectUrl = URL.createObjectURL(track.blob);
+
+        this.audio.src = this.currentObjectUrl;
+        this.audio.play().then(() => {
+            this.isPlaying = true;
+            this.updatePlayerBar();
+        }).catch(err => console.error("Playback error:", err));
+    }
+
+    togglePlayPause() {
+        if (!this.currentTrack) {
+            const tracks = this.getFilteredTracks();
+            if (tracks.length > 0) {
+                this.playTrack(tracks[0]);
+            }
+            return;
+        }
+
+        if (this.audio.paused) {
+            this.audio.play();
+        } else {
+            this.audio.pause();
+        }
+    }
+
+    playNextTrack(isAutoNext = false) {
+        const tracks = this.getFilteredTracks();
+        if (!tracks.length) return;
+
+        if (this.isShuffle) {
+            const randomIndex = Math.floor(Math.random() * tracks.length);
+            this.playTrack(tracks[randomIndex]);
+            return;
+        }
+
+        let nextIndex = this.currentTrackIndex + 1;
+        if (nextIndex >= tracks.length) {
+            if (this.repeatMode === 'all' || isAutoNext) {
+                nextIndex = 0;
+            } else {
+                return;
+            }
+        }
+        this.playTrack(tracks[nextIndex]);
+    }
+
+    playPrevTrack() {
+        const tracks = this.getFilteredTracks();
+        if (!tracks.length) return;
+
+        if (this.audio.currentTime > 3) {
+            this.audio.currentTime = 0;
+            return;
+        }
+
+        let prevIndex = this.currentTrackIndex - 1;
+        if (prevIndex < 0) {
+            prevIndex = tracks.length - 1;
+        }
+        this.playTrack(tracks[prevIndex]);
+    }
+
+    handleSeek(value) {
+        if (this.audio.duration) {
+            this.audio.currentTime = (value / 100) * this.audio.duration;
+        }
+    }
+
+    handleVolumeChange(value) {
+        this.audio.volume = value;
+        const iconVol = document.getElementById('icon-vol');
+        const iconMute = document.getElementById('icon-mute');
+        if (value == 0) {
+            iconVol?.classList.add('hidden');
+            iconMute?.classList.remove('hidden');
+        } else {
+            iconVol?.classList.remove('hidden');
+            iconMute?.classList.add('hidden');
+        }
+    }
+
+    toggleMute() {
+        if (this.audio.volume > 0) {
+            this.previousVolume = this.audio.volume;
+            this.handleVolumeChange(0);
+            if (this.volumeBar) this.volumeBar.value = 0;
+        } else {
+            const restoreVol = this.previousVolume || 0.8;
+            this.handleVolumeChange(restoreVol);
+            if (this.volumeBar) this.volumeBar.value = restoreVol;
+        }
+    }
+
+    toggleShuffle() {
+        this.isShuffle = !this.isShuffle;
+        const btn = document.getElementById('btn-shuffle');
+        if (this.isShuffle) {
+            btn?.classList.add('text-vibeAccent');
+            btn?.classList.remove('text-vibeMuted');
+            this.showToast('Ordem aleatória ativada', 'info');
+        } else {
+            btn?.classList.remove('text-vibeAccent');
+            btn?.classList.add('text-vibeMuted');
+            this.showToast('Ordem aleatória desativada', 'info');
+        }
+    }
+
+    toggleRepeat() {
+        const btn = document.getElementById('btn-repeat');
+        const badge = document.getElementById('repeat-badge-one');
+
+        if (this.repeatMode === 'off') {
+            this.repeatMode = 'all';
+            btn?.classList.add('text-vibeAccent');
+            btn?.classList.remove('text-vibeMuted');
+            badge?.classList.add('hidden');
+            this.showToast('Repetir todas as músicas', 'info');
+        } else if (this.repeatMode === 'all') {
+            this.repeatMode = 'one';
+            btn?.classList.add('text-vibeAccent');
+            badge?.classList.remove('hidden');
+            this.showToast('Repetir música atual', 'info');
+        } else {
+            this.repeatMode = 'off';
+            btn?.classList.remove('text-vibeAccent');
+            btn?.classList.add('text-vibeMuted');
+            badge?.classList.add('hidden');
+            this.showToast('Repetição desativada', 'info');
+        }
+    }
+
+    /* --- UI Rendering --- */
+    getFilteredTracks() {
+        let list = [...this.tracks];
+
+        if (this.activeView === 'favorites') {
+            list = list.filter(t => t.favorite);
+        } else if (this.activeView !== 'all') {
+            list = list.filter(t => t.folders.includes(this.activeView));
+        }
+
+        if (this.searchQuery.trim()) {
+            const q = this.searchQuery.toLowerCase();
+            list = list.filter(t => t.name.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q));
+        }
+
+        return list;
+    }
+
+    renderTracks() {
+        const container = document.getElementById('tracks-container');
+        const emptyState = document.getElementById('empty-state');
+        const tracks = this.getFilteredTracks();
+
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (tracks.length === 0) {
+            emptyState?.classList.remove('hidden');
+            return;
+        } else {
+            emptyState?.classList.add('hidden');
+        }
+
+        tracks.forEach((track, idx) => {
+            const isCurrent = this.currentTrack && this.currentTrack.id === track.id;
+            const item = document.createElement('div');
+            item.className = `group grid grid-cols-12 gap-2 md:gap-4 items-center px-4 py-3 rounded-xl transition cursor-pointer border border-transparent ${
+                isCurrent ? 'bg-vibeAccent/10 border-vibeAccent/30 text-vibeAccent' : 'hover:bg-vibeHover text-vibeText'
+            }`;
+
+            item.onclick = (e) => {
+                if (!e.target.closest('.action-btn')) {
+                    this.playTrack(track);
+                }
+            };
+
+            item.innerHTML = `
+                <div class="col-span-1 text-center font-mono text-xs text-vibeMuted flex items-center justify-center">
+                    ${isCurrent && this.isPlaying ? 
+                        `<i data-lucide="volume-2" class="w-4 h-4 text-vibeAccent animate-pulse"></i>` : 
+                        `<span>${idx + 1}</span>`
                     }
-                });
+                </div>
 
-                this.audio.addEventListener('play', () => {
-                    this.isPlaying = true;
-                    this.updatePlayStateUI();
-                });
+                <div class="col-span-8 md:col-span-6 flex items-center gap-3 overflow-hidden">
+                    <div class="w-9 h-9 rounded-lg bg-vibeCard border border-vibeBorder flex items-center justify-center shrink-0 text-vibeAccent">
+                        <i data-lucide="music" class="w-4 h-4"></i>
+                    </div>
+                    <div class="overflow-hidden">
+                        <h5 class="text-sm font-semibold truncate ${isCurrent ? 'text-vibeAccent' : 'text-white'}">${track.name}</h5>
+                        <p class="text-xs text-vibeMuted truncate">${track.artist}</p>
+                    </div>
+                </div>
 
-                this.audio.addEventListener('pause', () => {
-                    this.isPlaying = false;
-                    this.updatePlayStateUI();
-                });
+                <div class="hidden md:flex col-span-3 items-center gap-1 overflow-x-auto">
+                    ${track.folders.map(fId => {
+                        const f = this.folders.find(fold => fold.id === fId);
+                        return f ? `<span class="px-2 py-0.5 rounded-md bg-vibeDark border border-vibeBorder text-[10px] text-vibeMuted font-medium">${f.name}</span>` : '';
+                    }).join('')}
+                </div>
 
-                this.audio.addEventListener('error', (e) => {
-                    this.showToast('Erro ao reproduzir esta faixa.', 'error');
-                });
+                <div class="col-span-2 md:col-span-1 text-center font-mono text-xs text-vibeMuted">
+                    ${this.formatTime(track.duration)}
+                </div>
+
+                <div class="col-span-1 flex items-center justify-end gap-1">
+                    <button onclick="app.toggleFavoriteTrack('${track.id}')" class="action-btn p-1.5 text-vibeMuted hover:text-rose-500 transition" title="Favoritar">
+                        <i data-lucide="heart" class="w-4 h-4 ${track.favorite ? 'fill-rose-500 text-rose-500' : ''}"></i>
+                    </button>
+                    <button onclick="app.openAddToFolderModal('${track.id}')" class="action-btn p-1.5 text-vibeMuted hover:text-vibeAccent transition" title="Adicionar à Pasta">
+                        <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="app.confirmDeleteTrack('${track.id}')" class="action-btn p-1.5 text-vibeMuted hover:text-red-400 transition" title="Excluir">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `;
+
+            container.appendChild(item);
+        });
+
+        if (window.lucide) lucide.createIcons();
+    }
+
+    renderSidebarFolders() {
+        const container = document.getElementById('sidebar-folders-list');
+        const mobileContainer = document.getElementById('mobile-folders-list');
+        
+        if (container) container.innerHTML = '';
+        if (mobileContainer) mobileContainer.innerHTML = '';
+
+        if (this.folders.length === 0) {
+            if (container) container.innerHTML = `<p class="px-3 text-xs text-vibeMuted italic">Nenhuma pasta criada</p>`;
+            if (mobileContainer) mobileContainer.innerHTML = `<p class="text-xs text-vibeMuted italic">Nenhuma pasta criada</p>`;
+            return;
+        }
+
+        this.folders.forEach(folder => {
+            const count = this.tracks.filter(t => t.folders.includes(folder.id)).length;
+            const isActive = this.activeView === folder.id;
+
+            if (container) {
+                const item = document.createElement('div');
+                item.className = `group flex items-center justify-between px-3 py-2 rounded-xl text-sm transition cursor-pointer ${
+                    isActive ? 'bg-vibeAccent/10 text-vibeAccent border border-vibeAccent/20 font-medium' : 'text-vibeMuted hover:bg-vibeHover hover:text-white'
+                }`;
+                item.onclick = () => this.switchView(folder.id);
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-2.5 truncate">
+                        <i data-lucide="folder" class="w-4 h-4 shrink-0"></i>
+                        <span class="truncate">${folder.name}</span>
+                    </div>
+                    <div class="flex items-center gap-1 opacity-100 group-hover:opacity-100 transition">
+                        <span class="text-xs bg-vibeDark/50 px-1.5 py-0.5 rounded-full">${count}</span>
+                        <button onclick="event.stopPropagation(); app.deleteFolder('${folder.id}')" class="p-1 hover:text-red-400 opacity-0 group-hover:opacity-100 transition" title="Excluir Pasta">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
             }
 
-            playTrack(track) {
-                if (!track) return;
-
-                // Revoke existing URL to prevent memory leaks
-                if (this.currentObjectUrl) {
-                    URL.revokeObjectURL(this.currentObjectUrl);
-                }
-
-                this.currentTrack = track;
-                this.currentTrackIndex = this.getFilteredTracks().findIndex(t => t.id === track.id);
-                this.currentObjectUrl = URL.createObjectURL(track.blob);
-
-                this.audio.src = this.currentObjectUrl;
-                this.audio.play().then(() => {
-                    this.isPlaying = true;
-                    this.updatePlayerBar();
-                }).catch(err => console.error("Playback error:", err));
-            }
-
-            togglePlayPause() {
-                if (!this.currentTrack) {
-                    const tracks = this.getFilteredTracks();
-                    if (tracks.length > 0) {
-                        this.playTrack(tracks[0]);
-                    }
-                    return;
-                }
-
-                if (this.audio.paused) {
-                    this.audio.play();
-                } else {
-                    this.audio.pause();
-                }
-            }
-
-            playNextTrack(isAutoNext = false) {
-                const tracks = this.getFilteredTracks();
-                if (!tracks.length) return;
-
-                if (this.isShuffle) {
-                    const randomIndex = Math.floor(Math.random() * tracks.length);
-                    this.playTrack(tracks[randomIndex]);
-                    return;
-                }
-
-                let nextIndex = this.currentTrackIndex + 1;
-                if (nextIndex >= tracks.length) {
-                    if (this.repeatMode === 'all' || isAutoNext) {
-                        nextIndex = 0;
-                    } else {
-                        return;
-                    }
-                }
-                this.playTrack(tracks[nextIndex]);
-            }
-
-            playPrevTrack() {
-                const tracks = this.getFilteredTracks();
-                if (!tracks.length) return;
-
-                if (this.audio.currentTime > 3) {
-                    this.audio.currentTime = 0;
-                    return;
-                }
-
-                let prevIndex = this.currentTrackIndex - 1;
-                if (prevIndex < 0) {
-                    prevIndex = tracks.length - 1;
-                }
-                this.playTrack(tracks[prevIndex]);
-            }
-
-            handleSeek(value) {
-                if (this.audio.duration) {
-                    this.audio.currentTime = (value / 100) * this.audio.duration;
-                }
-            }
-
-            handleVolumeChange(value) {
-                this.audio.volume = value;
-                const iconVol = document.getElementById('icon-vol');
-                const iconMute = document.getElementById('icon-mute');
-                if (value == 0) {
-                    iconVol.classList.add('hidden');
-                    iconMute.classList.remove('hidden');
-                } else {
-                    iconVol.classList.remove('hidden');
-                    iconMute.classList.add('hidden');
-                }
-            }
-
-            toggleMute() {
-                if (this.audio.volume > 0) {
-                    this.previousVolume = this.audio.volume;
-                    this.handleVolumeChange(0);
-                    this.volumeBar.value = 0;
-                } else {
-                    const restoreVol = this.previousVolume || 0.8;
-                    this.handleVolumeChange(restoreVol);
-                    this.volumeBar.value = restoreVol;
-                }
-            }
-
-            toggleShuffle() {
-                this.isShuffle = !this.isShuffle;
-                const btn = document.getElementById('btn-shuffle');
-                if (this.isShuffle) {
-                    btn.classList.add('text-vibeAccent');
-                    btn.classList.remove('text-vibeMuted');
-                    this.showToast('Ordem aleatória ativada', 'info');
-                } else {
-                    btn.classList.remove('text-vibeAccent');
-                    btn.classList.add('text-vibeMuted');
-                    this.showToast('Ordem aleatória desativada', 'info');
-                }
-            }
-
-            toggleRepeat() {
-                const btn = document.getElementById('btn-repeat');
-                const badge = document.getElementById('repeat-badge-one');
-
-                if (this.repeatMode === 'off') {
-                    this.repeatMode = 'all';
-                    btn.classList.add('text-vibeAccent');
-                    btn.classList.remove('text-vibeMuted');
-                    badge.classList.add('hidden');
-                    this.showToast('Repetir todas as músicas', 'info');
-                } else if (this.repeatMode === 'all') {
-                    this.repeatMode = 'one';
-                    btn.classList.add('text-vibeAccent');
-                    badge.classList.remove('hidden');
-                    this.showToast('Repetir música atual', 'info');
-                } else {
-                    this.repeatMode = 'off';
-                    btn.classList.remove('text-vibeAccent');
-                    btn.classList.add('text-vibeMuted');
-                    badge.classList.add('hidden');
-                    this.showToast('Repetição desativada', 'info');
-                }
-            }
-
-            /* --- UI Rendering --- */
-            getFilteredTracks() {
-                let list = [...this.tracks];
-
-                // View Filter
-                if (this.activeView === 'favorites') {
-                    list = list.filter(t => t.favorite);
-                } else if (this.activeView !== 'all') {
-                    list = list.filter(t => t.folders.includes(this.activeView));
-                }
-
-                // Search Filter
-                if (this.searchQuery.trim()) {
-                    const q = this.searchQuery.toLowerCase();
-                    list = list.filter(t => t.name.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q));
-                }
-
-                return list;
-            }
-
-            renderTracks() {
-                const container = document.getElementById('tracks-container');
-                const emptyState = document.getElementById('empty-state');
-                const tracks = this.getFilteredTracks();
-
-                container.innerHTML = '';
-
-                if (tracks.length === 0) {
-                    emptyState.classList.remove('hidden');
-                    return;
-                } else {
-                    emptyState.classList.add('hidden');
-                }
-
-                tracks.forEach((track, idx) => {
-                    const isCurrent = this.currentTrack && this.currentTrack.id === track.id;
-                    const item = document.createElement('div');
-                    item.className = `group grid grid-cols-12 gap-2 md:gap-4 items-center px-4 py-3 rounded-xl transition cursor-pointer border border-transparent ${
-                        isCurrent ? 'bg-vibeAccent/10 border-vibeAccent/30 text-vibeAccent' : 'hover:bg-vibeHover text-vibeText'
-                    }`;
-
-                    item.onclick = (e) => {
-                        if (!e.target.closest('.action-btn')) {
-                            this.playTrack(track);
-                        }
-                    };
-
-                    item.innerHTML = `
-                        <!-- Number / Playing Icon -->
-                        <div class="col-span-1 text-center font-mono text-xs text-vibeMuted flex items-center justify-center">
-                            ${isCurrent && this.isPlaying ? 
-                                `<i data-lucide="volume-2" class="w-4 h-4 text-vibeAccent animate-pulse"></i>` : 
-                                `<span>${idx + 1}</span>`
-                            }
-                        </div>
-
-                        <!-- Title & Artist -->
-                        <div class="col-span-8 md:col-span-6 flex items-center gap-3 overflow-hidden">
-                            <div class="w-9 h-9 rounded-lg bg-vibeCard border border-vibeBorder flex items-center justify-center shrink-0 text-vibeAccent">
-                                <i data-lucide="music" class="w-4 h-4"></i>
-                            </div>
-                            <div class="overflow-hidden">
-                                <h5 class="text-sm font-semibold truncate ${isCurrent ? 'text-vibeAccent' : 'text-white'}">${track.name}</h5>
-                                <p class="text-xs text-vibeMuted truncate">${track.artist}</p>
-                            </div>
-                        </div>
-
-                        <!-- Folders Badges -->
-                        <div class="hidden md:flex col-span-3 items-center gap-1 overflow-x-auto">
-                            ${track.folders.map(fId => {
-                                const f = this.folders.find(fold => fold.id === fId);
-                                return f ? `<span class="px-2 py-0.5 rounded-md bg-vibeDark border border-vibeBorder text-[10px] text-vibeMuted font-medium">${f.name}</span>` : '';
-                            }).join('')}
-                        </div>
-
-                        <!-- Duration -->
-                        <div class="col-span-2 md:col-span-1 text-center font-mono text-xs text-vibeMuted">
-                            ${this.formatTime(track.duration)}
-                        </div>
-
-                        <!-- Actions -->
-                        <div class="col-span-1 flex items-center justify-end gap-1">
-                            <button onclick="app.toggleFavoriteTrack('${track.id}')" class="action-btn p-1.5 text-vibeMuted hover:text-rose-500 transition" title="Favoritar">
-                                <i data-lucide="heart" class="w-4 h-4 ${track.favorite ? 'fill-rose-500 text-rose-500' : ''}"></i>
-                            </button>
-                            <button onclick="app.openAddToFolderModal('${track.id}')" class="action-btn p-1.5 text-vibeMuted hover:text-vibeAccent transition" title="Adicionar à Pasta">
-                                <i data-lucide="folder-plus" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="app.confirmDeleteTrack('${track.id}')" class="action-btn p-1.5 text-vibeMuted hover:text-red-400 transition" title="Excluir">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        </div>
-                    `;
-
-                    container.appendChild(item);
-                });
-
-                lucide.createIcons();
-            }
-
-            renderSidebarFolders() {
-                const container = document.getElementById('sidebar-folders-list');
-                const mobileContainer = document.getElementById('mobile-folders-list');
-                
-                container.innerHTML = '';
-                mobileContainer.innerHTML = '';
-
-                if (this.folders.length === 0) {
-                    container.innerHTML = `<p class="px-3 text-xs text-vibeMuted italic">Nenhuma pasta criada</p>`;
-                    mobileContainer.innerHTML = `<p class="text-xs text-vibeMuted italic">Nenhuma pasta criada</p>`;
-                    return;
-                }
-
-                this.folders.forEach(folder => {
-                    const count = this.tracks.filter(t => t.folders.includes(folder.id)).length;
-                    const isActive = this.activeView === folder.id;
-
-                    // Desktop Sidebar Folder Item
-                    const item = document.createElement('div');
-                    item.className = `group flex items-center justify-between px-3 py-2 rounded-xl text-sm transition cursor-pointer ${
-                        isActive ? 'bg-vibeAccent/10 text-vibeAccent border border-vibeAccent/20 font-medium' : 'text-vibeMuted hover:bg-vibeHover hover:text-white'
-                    }`;
-                    item.onclick = () => this.switchView(folder.id);
-
-                    item.innerHTML = `
-                        <div class="flex items-center gap-2.5 truncate">
-                            <i data-lucide="folder" class="w-4 h-4 shrink-0"></i>
-                            <span class="truncate">${folder.name}</span>
-                        </div>
-                        <div class="flex items-center gap-1 opacity-100 group-hover:opacity-100 transition">
-                            <span class="text-xs bg-vibeDark/50 px-1.5 py-0.5 rounded-full">${count}</span>
-                            <button onclick="event.stopPropagation(); app.deleteFolder('${folder.id}')" class="p-1 hover:text-red-400 opacity-0 group-hover:opacity-100 transition" title="Excluir Pasta">
-                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                            </button>
-                        </div>
-                    `;
-                    container.appendChild(item);
-
-                    // Mobile Drawer Item
-                    const mobItem = document.createElement('div');
-                    mobItem.className = 'flex items-center justify-between p-3 rounded-xl bg-vibeDark border border-vibeBorder';
-                    mobItem.onclick = () => {
-                        this.switchView(folder.id);
-                        this.toggleMobileFoldersModal();
-                    };
-                    mobItem.innerHTML = `
-                        <div class="flex items-center gap-3">
-                            <i data-lucide="folder" class="w-5 h-5 text-vibeAccent"></i>
-                            <span class="font-medium text-white">${folder.name}</span>
-                        </div>
-                        <span class="text-xs bg-vibeCard border border-vibeBorder px-2 py-1 rounded-full text-vibeMuted">${count} músicas</span>
-                    `;
-                    mobileContainer.appendChild(mobItem);
-                });
-
-                lucide.createIcons();
-            }
-
-            updateCounts() {
-                document.getElementById('badge-all-count').innerText = this.tracks.length;
-                document.getElementById('badge-fav-count').innerText = this.tracks.filter(t => t.favorite).length;
-            }
-
-            updatePlayerBar() {
-                if (!this.currentTrack) return;
-
-                document.getElementById('player-title').innerText = this.currentTrack.name;
-                document.getElementById('player-artist').innerText = this.currentTrack.artist;
-                
-                // Vinyl Cover Disc Effect
-                const cover = document.getElementById('player-cover');
-                const coverIcon = document.getElementById('player-cover-icon');
-                
-                if (this.isPlaying) {
-                    coverIcon.classList.add('disk-spin');
-                    cover.classList.add('border-vibeAccent');
-                } else {
-                    coverIcon.classList.remove('disk-spin');
-                    cover.classList.remove('border-vibeAccent');
-                }
-
-                // Heart Icon
-                const favBtn = document.getElementById('btn-fav-current');
-                favBtn.innerHTML = `<i data-lucide="heart" class="w-5 h-5 ${this.currentTrack.favorite ? 'fill-rose-500 text-rose-500' : ''}"></i>`;
-
-                this.updatePlayStateUI();
-                lucide.createIcons();
-            }
-
-            updatePlayStateUI() {
-                const playIcon = document.getElementById('icon-play');
-                const pauseIcon = document.getElementById('icon-pause');
-                const coverIcon = document.getElementById('player-cover-icon');
-
-                if (this.isPlaying) {
-                    playIcon.classList.add('hidden');
-                    pauseIcon.classList.remove('hidden');
-                    coverIcon?.classList.add('disk-spin');
-                } else {
-                    playIcon.classList.remove('hidden');
-                    pauseIcon.classList.add('hidden');
-                    coverIcon?.classList.remove('disk-spin');
-                }
-            }
-
-            switchView(viewId) {
-                this.activeView = viewId;
-                
-                // Navigation UI Highlight Reset
-                document.getElementById('nav-all').className = 'w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition font-medium text-sm ' + (viewId === 'all' ? 'bg-vibeAccent/10 text-vibeAccent border border-vibeAccent/20' : 'text-vibeMuted hover:bg-vibeHover hover:text-white');
-                document.getElementById('nav-favorites').className = 'w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition font-medium text-sm ' + (viewId === 'favorites' ? 'bg-vibeAccent/10 text-vibeAccent border border-vibeAccent/20' : 'text-vibeMuted hover:bg-vibeHover hover:text-white');
-
-                // View Title Update
-                const badge = document.getElementById('current-view-badge');
-                if (viewId === 'all') {
-                    badge.innerText = 'Todas as Músicas';
-                } else if (viewId === 'favorites') {
-                    badge.innerText = 'Músicas Favoritas';
-                } else {
-                    const f = this.folders.find(fold => fold.id === viewId);
-                    badge.innerText = f ? `Pasta: ${f.name}` : 'Músicas';
-                }
-
-                this.renderSidebarFolders();
-                this.renderTracks();
-            }
-
-            handleSearch(query) {
-                this.searchQuery = query;
-                this.renderTracks();
-            }
-
-            /* --- Folder Management Operations --- */
-            openFolderModal() {
-                document.getElementById('folder-name-input').value = '';
-                document.getElementById('modal-folder').classList.remove('hidden');
-            }
-
-            closeFolderModal() {
-                document.getElementById('modal-folder').classList.add('hidden');
-            }
-
-            async saveFolder() {
-                const nameInput = document.getElementById('folder-name-input').value.trim();
-                if (!nameInput) {
-                    this.showToast('Por favor, informe o nome da pasta.', 'warning');
-                    return;
-                }
-
-                const newFolder = {
-                    id: 'folder_' + Date.now(),
-                    name: nameInput,
-                    createdAt: Date.now()
+            if (mobileContainer) {
+                const mobItem = document.createElement('div');
+                mobItem.className = 'flex items-center justify-between p-3 rounded-xl bg-vibeDark border border-vibeBorder';
+                mobItem.onclick = () => {
+                    this.switchView(folder.id);
+                    this.toggleMobileFoldersModal();
                 };
-
-                await this.saveToStore('folders', newFolder);
-                this.folders.push(newFolder);
-                this.closeFolderModal();
-                this.renderSidebarFolders();
-                this.showToast(`Pasta "${nameInput}" criada com sucesso!`, 'success');
+                mobItem.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="folder" class="w-5 h-5 text-vibeAccent"></i>
+                        <span class="font-medium text-white">${folder.name}</span>
+                    </div>
+                    <span class="text-xs bg-vibeCard border border-vibeBorder px-2 py-1 rounded-full text-vibeMuted">${count} músicas</span>
+                `;
+                mobileContainer.appendChild(mobItem);
             }
+        });
 
-            async deleteFolder(folderId) {
-                const folder = this.folders.find(f => f.id === folderId);
-                if (!folder) return;
+        if (window.lucide) lucide.createIcons();
+    }
 
-                if (confirm(`Deseja remover a pasta "${folder.name}"? As músicas serão preservadas na biblioteca.`)) {
-                    await this.deleteFromStore('folders', folderId);
-                    this.folders = this.folders.filter(f => f.id !== folderId);
-                    
-                    // Remove folder reference from tracks
-                    for (const track of this.tracks) {
-                        if (track.folders.includes(folderId)) {
-                            track.folders = track.folders.filter(f => f !== folderId);
-                            await this.saveToStore('tracks', track);
-                        }
-                    }
+    updateCounts() {
+        const allBadge = document.getElementById('badge-all-count');
+        const favBadge = document.getElementById('badge-fav-count');
+        if (allBadge) allBadge.innerText = this.tracks.length;
+        if (favBadge) favBadge.innerText = this.tracks.filter(t => t.favorite).length;
+    }
 
-                    if (this.activeView === folderId) {
-                        this.switchView('all');
-                    } else {
-                        this.renderSidebarFolders();
-                        this.renderTracks();
-                    }
-                    this.showToast('Pasta removida.', 'info');
-                }
-            }
+    updatePlayerBar() {
+        if (!this.currentTrack) return;
 
-            openAddToFolderModal(trackId) {
-                this.pendingTrackForFolder = this.tracks.find(t => t.id === trackId);
-                if (!this.pendingTrackForFolder) return;
+        const titleEl = document.getElementById('player-title');
+        const artistEl = document.getElementById('player-artist');
+        if (titleEl) titleEl.innerText = this.currentTrack.name;
+        if (artistEl) artistEl.innerText = this.currentTrack.artist;
+        
+        const cover = document.getElementById('player-cover');
+        const coverIcon = document.getElementById('player-cover-icon');
+        
+        if (this.isPlaying) {
+            coverIcon?.classList.add('disk-spin');
+            cover?.classList.add('border-vibeAccent');
+        } else {
+            coverIcon?.classList.remove('disk-spin');
+            cover?.classList.remove('border-vibeAccent');
+        }
 
-                const container = document.getElementById('add-folder-options-container');
-                container.innerHTML = '';
+        const favBtn = document.getElementById('btn-fav-current');
+        if (favBtn) {
+            favBtn.innerHTML = `<i data-lucide="heart" class="w-5 h-5 ${this.currentTrack.favorite ? 'fill-rose-500 text-rose-500' : ''}"></i>`;
+        }
 
-                if (this.folders.length === 0) {
-                    container.innerHTML = `<p class="text-xs text-vibeMuted py-4 text-center">Nenhuma pasta disponível. Crie uma pasta primeiro!</p>`;
-                } else {
-                    this.folders.forEach(folder => {
-                        const isMember = this.pendingTrackForFolder.folders.includes(folder.id);
-                        const btn = document.createElement('button');
-                        btn.className = `w-full flex items-center justify-between p-3 rounded-xl border transition ${
-                            isMember ? 'bg-vibeAccent/10 border-vibeAccent/30 text-vibeAccent' : 'bg-vibeDark border-vibeBorder text-vibeText hover:bg-vibeHover'
-                        }`;
-                        btn.onclick = () => this.toggleTrackFolder(folder.id);
-                        btn.innerHTML = `
-                            <div class="flex items-center gap-3">
-                                <i data-lucide="folder" class="w-4 h-4"></i>
-                                <span class="font-medium text-sm">${folder.name}</span>
-                            </div>
-                            <i data-lucide="${isMember ? 'check-circle' : 'circle'}" class="w-4 h-4"></i>
-                        `;
-                        container.appendChild(btn);
-                    });
-                }
+        this.updatePlayStateUI();
+        if (window.lucide) lucide.createIcons();
+    }
 
-                lucide.createIcons();
-                document.getElementById('modal-add-to-folder').classList.remove('hidden');
-            }
+    updatePlayStateUI() {
+        const playIcon = document.getElementById('icon-play');
+        const pauseIcon = document.getElementById('icon-pause');
+        const coverIcon = document.getElementById('player-cover-icon');
 
-            closeAddToFolderModal() {
-                document.getElementById('modal-add-to-folder').classList.add('hidden');
-                this.pendingTrackForFolder = null;
-            }
+        if (this.isPlaying) {
+            playIcon?.classList.add('hidden');
+            pauseIcon?.classList.remove('hidden');
+            coverIcon?.classList.add('disk-spin');
+        } else {
+            playIcon?.classList.remove('hidden');
+            pauseIcon?.classList.add('hidden');
+            coverIcon?.classList.remove('disk-spin');
+        }
+    }
 
-            async toggleTrackFolder(folderId) {
-                if (!this.pendingTrackForFolder) return;
+    switchView(viewId) {
+        this.activeView = viewId;
+        
+        const navAll = document.getElementById('nav-all');
+        const navFav = document.getElementById('nav-favorites');
+        
+        if (navAll) navAll.className = 'w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition font-medium text-sm ' + (viewId === 'all' ? 'bg-vibeAccent/10 text-vibeAccent border border-vibeAccent/20' : 'text-vibeMuted hover:bg-vibeHover hover:text-white');
+        if (navFav) navFav.className = 'w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition font-medium text-sm ' + (viewId === 'favorites' ? 'bg-vibeAccent/10 text-vibeAccent border border-vibeAccent/20' : 'text-vibeMuted hover:bg-vibeHover hover:text-white');
 
-                const idx = this.pendingTrackForFolder.folders.indexOf(folderId);
-                if (idx > -1) {
-                    this.pendingTrackForFolder.folders.splice(idx, 1);
-                } else {
-                    this.pendingTrackForFolder.folders.push(folderId);
-                }
-
-                await this.saveToStore('tracks', this.pendingTrackForFolder);
-                this.openAddToFolderModal(this.pendingTrackForFolder.id);
-                this.renderSidebarFolders();
-                this.renderTracks();
-            }
-
-            async toggleFavoriteTrack(trackId) {
-                const track = this.tracks.find(t => t.id === trackId);
-                if (!track) return;
-
-                track.favorite = !track.favorite;
-                await this.saveToStore('tracks', track);
-                
-                this.updateCounts();
-                this.renderTracks();
-                if (this.currentTrack && this.currentTrack.id === trackId) {
-                    this.updatePlayerBar();
-                }
-            }
-
-            toggleFavoriteCurrent() {
-                if (this.currentTrack) {
-                    this.toggleFavoriteTrack(this.currentTrack.id);
-                }
-            }
-
-            async confirmDeleteTrack(trackId) {
-                const track = this.tracks.find(t => t.id === trackId);
-                if (!track) return;
-
-                if (confirm(`Excluir permanentemente "${track.name}" da biblioteca local?`)) {
-                    await this.deleteFromStore('tracks', trackId);
-                    this.tracks = this.tracks.filter(t => t.id !== trackId);
-
-                    if (this.currentTrack && this.currentTrack.id === trackId) {
-                        this.audio.pause();
-                        this.currentTrack = null;
-                        document.getElementById('player-title').innerText = 'Nenhuma faixa selecionada';
-                        document.getElementById('player-artist').innerText = 'Aguardando reprodução';
-                    }
-
-                    this.updateCounts();
-                    this.renderSidebarFolders();
-                    this.renderTracks();
-                    this.showToast('Música excluída com sucesso.', 'info');
-                }
-            }
-
-            toggleMobileFoldersModal() {
-                const modal = document.getElementById('modal-mobile-folders');
-                modal.classList.toggle('hidden');
-            }
-
-            /* --- Utilities & Toast --- */
-            formatTime(seconds) {
-                if (isNaN(seconds) || seconds === Infinity) return "0:00";
-                const mins = Math.floor(seconds / 60);
-                const secs = Math.floor(seconds % 60);
-                return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-            }
-
-            showToast(message, type = 'info') {
-                const container = document.getElementById('toast-container');
-                const toast = document.createElement('div');
-                
-                let bgColor = 'bg-vibeCard border-vibeBorder text-white';
-                if (type === 'success') bgColor = 'bg-vibeCard border-vibeAccent text-vibeAccent';
-                if (type === 'error') bgColor = 'bg-vibeCard border-red-500 text-red-400';
-                if (type === 'warning') bgColor = 'bg-vibeCard border-amber-500 text-amber-400';
-
-                toast.className = `px-4 py-3 rounded-xl border ${bgColor} shadow-2xl text-xs font-medium flex items-center gap-2 transform transition duration-300 translate-y-2 opacity-0 pointer-events-auto`;
-                toast.innerHTML = `<span>${message}</span>`;
-
-                container.appendChild(toast);
-
-                requestAnimationFrame(() => {
-                    toast.classList.remove('translate-y-2', 'opacity-0');
-                });
-
-                setTimeout(() => {
-                    toast.classList.add('translate-y-2', 'opacity-0');
-                    setTimeout(() => toast.remove(), 300);
-                }, 3500);
-            }
-
-            registerServiceWorker() {
-                if ('serviceWorker' in navigator) {
-                    const swCode = `
-                        const CACHE_NAME = 'vibe-player-v1';
-                        self.addEventListener('install', (e) => {
-                            e.waitUntil(
-                                caches.open(CACHE_NAME).then((cache) => {
-                                    return cache.addAll(['./']);
-                                })
-                            );
-                        });
-                        self.addEventListener('fetch', (e) => {
-                            e.respondWith(
-                                caches.match(e.request).then((res) => res || fetch(e.request))
-                            );
-                        });
-                    `;
-                    const blob = new Blob([swCode], { type: 'application/javascript' });
-                    const swUrl = URL.createObjectURL(blob);
-                    navigator.serviceWorker.register(swUrl).catch(err => {
-                        console.log('SW registration fallback:', err);
-                    });
-                }
+        const badge = document.getElementById('current-view-badge');
+        if (badge) {
+            if (viewId === 'all') {
+                badge.innerText = 'Todas as Músicas';
+            } else if (viewId === 'favorites') {
+                badge.innerText = 'Músicas Favoritas';
+            } else {
+                const f = this.folders.find(fold => fold.id === viewId);
+                badge.innerText = f ? `Pasta: ${f.name}` : 'Músicas';
             }
         }
 
-        // Inicializar App quando o DOM estiver pronto
+        this.renderSidebarFolders();
+        this.renderTracks();
+    }
+
+    handleSearch(query) {
+        this.searchQuery = query;
+        this.renderTracks();
+    }
+
+    /* --- Folder Management Operations --- */
+    openFolderModal() {
+        const input = document.getElementById('folder-name-input');
+        if (input) input.value = '';
+        document.getElementById('modal-folder')?.classList.remove('hidden');
+    }
+
+    closeFolderModal() {
+        document.getElementById('modal-folder')?.classList.add('hidden');
+    }
+
+    async saveFolder() {
+        const input = document.getElementById('folder-name-input');
+        const nameInput = input ? input.value.trim() : '';
+        if (!nameInput) {
+            this.showToast('Por favor, informe o nome da pasta.', 'warning');
+            return;
+        }
+
+        const newFolder = {
+            id: 'folder_' + Date.now(),
+            name: nameInput,
+            createdAt: Date.now()
+        };
+
+        await this.saveToStore('folders', newFolder);
+        this.folders.push(newFolder);
+        this.closeFolderModal();
+        this.renderSidebarFolders();
+        this.showToast(`Pasta "${nameInput}" criada com sucesso!`, 'success');
+    }
+
+    async deleteFolder(folderId) {
+        const folder = this.folders.find(f => f.id === folderId);
+        if (!folder) return;
+
+        if (confirm(`Deseja remover a pasta "${folder.name}"? As músicas serão preservadas na biblioteca.`)) {
+            await this.deleteFromStore('folders', folderId);
+            this.folders = this.folders.filter(f => f.id !== folderId);
+            
+            for (const track of this.tracks) {
+                if (track.folders.includes(folderId)) {
+                    track.folders = track.folders.filter(f => f !== folderId);
+                    await this.saveToStore('tracks', track);
+                }
+            }
+
+            if (this.activeView === folderId) {
+                this.switchView('all');
+            } else {
+                this.renderSidebarFolders();
+                this.renderTracks();
+            }
+            this.showToast('Pasta removida.', 'info');
+        }
+    }
+
+    openAddToFolderModal(trackId) {
+        this.pendingTrackForFolder = this.tracks.find(t => t.id === trackId);
+        if (!this.pendingTrackForFolder) return;
+
+        const container = document.getElementById('add-folder-options-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (this.folders.length === 0) {
+            container.innerHTML = `<p class="text-xs text-vibeMuted py-4 text-center">Nenhuma pasta disponível. Crie uma pasta primeiro!</p>`;
+        } else {
+            this.folders.forEach(folder => {
+                const isMember = this.pendingTrackForFolder.folders.includes(folder.id);
+                const btn = document.createElement('button');
+                btn.className = `w-full flex items-center justify-between p-3 rounded-xl border transition ${
+                    isMember ? 'bg-vibeAccent/10 border-vibeAccent/30 text-vibeAccent' : 'bg-vibeDark border-vibeBorder text-vibeText hover:bg-vibeHover'
+                }`;
+                btn.onclick = () => this.toggleTrackFolder(folder.id);
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="folder" class="w-4 h-4"></i>
+                        <span class="font-medium text-sm">${folder.name}</span>
+                    </div>
+                    <i data-lucide="${isMember ? 'check-circle' : 'circle'}" class="w-4 h-4"></i>
+                `;
+                container.appendChild(btn);
+            });
+        }
+
+        if (window.lucide) lucide.createIcons();
+        document.getElementById('modal-add-to-folder')?.classList.remove('hidden');
+    }
+
+    closeAddToFolderModal() {
+        document.getElementById('modal-add-to-folder')?.classList.add('hidden');
+        this.pendingTrackForFolder = null;
+    }
+
+    async toggleTrackFolder(folderId) {
+        if (!this.pendingTrackForFolder) return;
+
+        const idx = this.pendingTrackForFolder.folders.indexOf(folderId);
+        if (idx > -1) {
+            this.pendingTrackForFolder.folders.splice(idx, 1);
+        } else {
+            this.pendingTrackForFolder.folders.push(folderId);
+        }
+
+        await this.saveToStore('tracks', this.pendingTrackForFolder);
+        this.openAddToFolderModal(this.pendingTrackForFolder.id);
+        this.renderSidebarFolders();
+        this.renderTracks();
+    }
+
+    async toggleFavoriteTrack(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+
+        track.favorite = !track.favorite;
+        await this.saveToStore('tracks', track);
+        
+        this.updateCounts();
+        this.renderTracks();
+        if (this.currentTrack && this.currentTrack.id === trackId) {
+            this.updatePlayerBar();
+        }
+    }
+
+    toggleFavoriteCurrent() {
+        if (this.currentTrack) {
+            this.toggleFavoriteTrack(this.currentTrack.id);
+        }
+    }
+
+    async confirmDeleteTrack(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (!track) return;
+
+        if (confirm(`Excluir permanentemente "${track.name}" da biblioteca local?`)) {
+            await this.deleteFromStore('tracks', trackId);
+            this.tracks = this.tracks.filter(t => t.id !== trackId);
+
+            if (this.currentTrack && this.currentTrack.id === trackId) {
+                this.audio.pause();
+                this.currentTrack = null;
+                const titleEl = document.getElementById('player-title');
+                const artistEl = document.getElementById('player-artist');
+                if (titleEl) titleEl.innerText = 'Nenhuma faixa selecionada';
+                if (artistEl) artistEl.innerText = 'Aguardando reprodução';
+            }
+
+            this.updateCounts();
+            this.renderSidebarFolders();
+            this.renderTracks();
+            this.showToast('Música excluída com sucesso.', 'info');
+        }
+    }
+
+    toggleMobileFoldersModal() {
+        const modal = document.getElementById('modal-mobile-folders');
+        modal?.classList.toggle('hidden');
+    }
+
+    /* --- Utilities & Toast --- */
+    formatTime(seconds) {
+        if (isNaN(seconds) || seconds === Infinity) return "0:00";
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        
+        let bgColor = 'bg-vibeCard border-vibeBorder text-white';
+        if (type === 'success') bgColor = 'bg-vibeCard border-vibeAccent text-vibeAccent';
+        if (type === 'error') bgColor = 'bg-vibeCard border-red-500 text-red-400';
+        if (type === 'warning') bgColor = 'bg-vibeCard border-amber-500 text-amber-400';
+
+        toast.className = `px-4 py-3 rounded-xl border ${bgColor} shadow-2xl text-xs font-medium flex items-center gap-2 transform transition duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+        toast.innerHTML = `<span>${message}</span>`;
+
+        container.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.classList.remove('translate-y-2', 'opacity-0');
+        });
+
+        setTimeout(() => {
+            toast.classList.add('translate-y-2', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 3500);
+    }
+
+    registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker registado:', reg))
+                .catch(err => console.error('Erro SW:', err));
+        }
+    }
+}
+
+// Inicialização da Aplicação
 let app;
 window.addEventListener('DOMContentLoaded', () => {
-  app = new VibePlayer();
+    app = new VibePlayer();
+    app.registerServiceWorker();
 });
 
-// Inicialização e Registo do Service Worker
-  let app;
-  window.addEventListener('DOMContentLoaded', () => {
-    app = new VibePlayer();
-  });
-
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('Service Worker registado:', reg))
-        .catch(err => console.error('Erro SW:', err));
-    });
-  }
-
-  // Função para abrir/fechar o player em ecrã inteiro ao clicar na música
-  function openFullPlayer() {
+// Funções para Modal de Player Fullscreen
+function openFullPlayer() {
     const fullPlayer = document.querySelector('.full-player-modal') || document.getElementById('fullPlayerModal');
-    if (fullPlayer) {
-      fullPlayer.classList.add('active');
-    }
-  }
+    fullPlayer?.classList.add('active');
+}
 
-  function closeFullPlayer() {
+function closeFullPlayer() {
     const fullPlayer = document.querySelector('.full-player-modal') || document.getElementById('fullPlayerModal');
-    if (fullPlayer) {
-      fullPlayer.classList.remove('active');
-    }
-  }
-    </script>
+    fullPlayer?.classList.remove('active');
+}
+</script>
 </body>
 </html>
